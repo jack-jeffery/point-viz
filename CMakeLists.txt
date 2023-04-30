@@ -53,7 +53,10 @@ CPMAddPackage(
     GITHUB_REPOSITORY LAStools/LAStools
     VERSION 2.0.2
 )
+# Fix a bug in LASlib wherein these directories can't be found if not being built directly
 target_include_directories(LASlib PRIVATE ${LAStools_SOURCE_DIR}/LASzip/src ${LAStools_SOURCE_DIR}/LASlib/inc)
+
+# Exclude all the targets from the main CMakeLists.txt that is within LAStools, leaving only LASlib
 set(GEOPROJECTION_TARGETS
 	laszip
 	lasinfo
@@ -88,4 +91,4 @@ target_include_directories(${PROJECT_NAME} PUBLIC src)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 11) # use c++11
 
 # specify libraries to link with after compilation
-target_link_libraries(${PROJECT_NAME} PRIVATE glad glfw glm)
+target_link_libraries(${PROJECT_NAME} PRIVATE glad glfw glm LASlib)
