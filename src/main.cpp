@@ -1,223 +1,203 @@
-#include <fstream>
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <streambuf>
-#include <string>
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <LASlib/lasreader.hpp>
 
-//________________________________________________CALLBACK_FUNCTIONS_________________________________________________//
+#include <iostream>
 
-static void errorCallback(int error, const char* description) {
-    fputs(description, stderr);
-}
-static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    // close window when ESC has been pressed
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, GL_TRUE);
-}
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {}
-static void mousePositionCallback(GLFWwindow* window, double xpos, double ypos) {}
+#include "shader.h"
+#include "camera.h"
+#include "pointcloud.h"
 
-//_________________________________________________INITIALIZATION____________________________________________________//
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+void processInput(GLFWwindow *window);
 
-GLFWwindow* initialize(int width, int height, std::string title) {
-	GLFWwindow* window;
-	glfwSetErrorCallback(errorCallback);
+// settings
+const unsigned int SCR_WIDTH = 1800;
+const unsigned int SCR_HEIGHT = 1600;
 
-	// initialize glfw window
-	if (!glfwInit())
-		exit(EXIT_FAILURE);
+// camera
+float lastX = SCR_WIDTH / 2.0f;
+float lastY = SCR_HEIGHT / 2.0f;
+bool firstMouse = true;
 
-	// we want to use the opengl 3.3 core profile
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+// timing
+float deltaTime = 0.0f; // time between current frame and last frame
+float lastFrame = 0.0f;
+Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
+
+int main()
+{
+	// glfw: initialize and configure
+	// ------------------------------
+	glfwInit();
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// actually create the window
-	window = glfwCreateWindow(width, height, title.c_str(), NULL, NULL);
-
-	// make sure the window creation was successful
-	if (!window) {
-		fprintf(stderr, "Failed to open GLFW window.\n");
+	// file i/o
+	// Setup las reader
+	PointCloud my_point_cloud("/home/jack/Documents/projects/point-viz/old/MLN1-1100_2_MLSPCD_20230119_fc48_sweep_272.laz");
+	// glfw window creation
+	// --------------------
+	GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
+	if (window == NULL)
+	{
+		std::cout << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	glfwMakeContextCurrent(window);
+	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-	// initialize glad for loading all OpenGL functions
-	if (!gladLoadGL()) {
-		printf("Something went wrong!\n");
-		exit(-1);
+	// glad: load all OpenGL function pointers
+	// ---------------------------------------
+	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+	{
+		std::cout << "Failed to initialize GLAD" << std::endl;
+		return -1;
 	}
+	glEnable(GL_DEPTH_TEST);
 
-	// print some information about the supported OpenGL version
-	const GLubyte* renderer = glGetString(GL_RENDERER);
-	const GLubyte* version = glGetString(GL_VERSION);
-	fprintf(stdout, "Renderer: %s\n", renderer);
-	fprintf(stdout, "OpenGL version supported %s\n", version);
+	unsigned int VBO, VAO;
+	glGenBuffers(1, &VBO);
+	glGenVertexArrays(1, &VAO);
 
-	// register user callbacks
-	glfwSetKeyCallback(window, keyCallback);
-	glfwSetMouseButtonCallback(window, mouseButtonCallback);
-	glfwSetCursorPosCallback(window, mousePositionCallback);
-
-	// set the clear color of the window
-	glClearColor(0.3f, 0.3f, 0.3f, 0.0f);
-
-	return window;
-}
-
-GLuint createBuffers() {
-	// specify the layout of the vertex data, being the vertex position followed by the vertex color
-	struct Vertex {
-		glm::vec3 pos;
-		glm::vec3 color;
-	};
-
-	// we specify a triangle with red, green, blue at the tips of the triangle
-	Vertex vertexData[] = {
-		Vertex{glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec3(1.f, 0.f, 0.f)},
-		Vertex{glm::vec3( 0.5f, -0.5f, 0.0f), glm::vec3(0.f, 1.f, 0.f)},
-		Vertex{glm::vec3( 0.0f,  0.5f, 0.0f), glm::vec3(0.f, 0.f, 1.f)}
-	};
-
-	// create the vertex array object that holds all vertex buffers
-	GLuint vao;
-	glGenVertexArrays(1, &vao);
-	glBindVertexArray(vao);
-
-	// create a vertex buffer that contains all vertex positions and copy the vertex positions into that buffer
-	GLuint vbo;
-	glGenBuffers(1, &vbo);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
-
-	// we need to tell the buffer in which format the data is and we need to explicitly enable it
-	// first we specify the layout of the vertex position
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(struct Vertex, pos)));
+	glBindVertexArray(VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(double) * my_point_cloud.get_npoints() * 6, NULL, GL_DYNAMIC_DRAW);
 	glEnableVertexAttribArray(0);
-	// then we specify the layout of the vertex color
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(struct Vertex, color)));
 	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 3, GL_DOUBLE, GL_FALSE, sizeof(double) * 6, (void *)0);
+	glVertexAttribPointer(1, 3, GL_DOUBLE, GL_FALSE, sizeof(double) * 6, (void *)(sizeof(double) * 3));
 
-	return vao;
-}
+	double *points = (double *)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
 
-GLuint compileShader(std::string path, GLenum shaderType) {
-	// grab the contents of the file and store the source code in a string
-	std::ifstream filestream(path);
-	std::string shaderSource((std::istreambuf_iterator<char>(filestream)),
-		std::istreambuf_iterator<char>());
-
-	// create and compile the shader
-	GLuint shaderHandle = glCreateShader(shaderType);
-	const char* shaderSourcePtr = shaderSource.c_str();
-	glShaderSource(shaderHandle, 1, &shaderSourcePtr, NULL);
-	glCompileShader(shaderHandle);
-
-	// check if compilation was successful
-	int  success;
-	char infoLog[512];
-	glGetShaderiv(shaderHandle, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		glGetShaderInfoLog(shaderHandle, 512, NULL, infoLog);
-		std::cerr << "Error while compiling shader\n" << infoLog << std::endl;
+	// Check if glMapBuffer succeeded
+	if (points == NULL)
+	{
+		std::cerr << "glMapBuffer failed\n";
+		return 1;
 	}
 
-	// return the shader handle
-	return shaderHandle;
-}
-GLuint createShaderProgram(std::string vertexShaderPath, std::string fragmentShaderPath) {
-	// create and compile shaders
-	GLenum vertexShader = compileShader(vertexShaderPath, GL_VERTEX_SHADER);
-	GLenum fragmentShader = compileShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
+	my_point_cloud.read_points_into_buffer(points);
+	std::cout << points[3] << std::endl;
+	std::cout << points[4] << std::endl;
+	std::cout << points[5] << std::endl;
 
-	// create a shader program, attach both shaders and link them together
-	GLuint shaderProgram = glCreateProgram();
-	glAttachShader(shaderProgram, vertexShader);
-	glAttachShader(shaderProgram, fragmentShader);
-	glLinkProgram(shaderProgram);
+	camera.Position = glm::vec3(points[0], points[1], points[2]);
+	glUnmapBuffer(GL_ARRAY_BUFFER);
+	uint64_t point_count = 100;
+	// glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+	Shader ourShader(ASSETS_PATH "/shaders/point_shader.vs", ASSETS_PATH "/shaders/point_shader.fs"); // you can name your shader files however you like
+	while (!glfwWindowShouldClose(window))
+	{
+		// per-frame time logic
+		// --------------------
+		float currentFrame = static_cast<float>(glfwGetTime());
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
 
-	// check for errors while linking the shaders together
-	int  success;
-	char infoLog[512];
-	glGetShaderiv(shaderProgram, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		glGetShaderInfoLog(shaderProgram, 512, NULL, infoLog);
-		std::cerr << "Error while linking shaders\n" << infoLog << std::endl;
-	}
+		// input
+		// -----
+		processInput(window);
 
-	// after creating the shader program we don't need the two shaders anymore
-	glDeleteShader(vertexShader);
-	glDeleteShader(fragmentShader);
+		// render
+		// ------
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// activate shader
+		ourShader.use();
 
-	// return the shader program handle
-	return shaderProgram;
-}
+		// glm::mat4 model = glm::mat4(1.0f);
+		// model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		// int modelLoc = glGetUniformLocation(ourShader.ID, "model");
+		// glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-//______________________________________________________RENDER_______________________________________________________//
+		// pass projection matrix to shader (note that in this case it could change every frame)
+		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.00001f, 10000000.0f);
+		glm::mat4x4 world_transform = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+		int projLoc = glGetUniformLocation(ourShader.ID, "projection");
+		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-void render(GLuint shaderProgram, GLuint vao) {
-	glUseProgram(shaderProgram);
-	glBindVertexArray(vao);
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-}
+		// camera/view transformation
+		glm::mat4 view = camera.GetViewMatrix();
+		int viewLoc = glGetUniformLocation(ourShader.ID, "view");
+		glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+		// render boxes
+		glBindVertexArray(VAO);
+		glDrawArrays(GL_POINTS, 0, my_point_cloud.get_npoints());
 
-//______________________________________________________CLEANUP______________________________________________________//
-
-void cleanup(GLFWwindow* window, GLuint& shaderProgram, GLuint& vao) {
-	// do some custom cleanup here
-	glDeleteProgram(shaderProgram);
-	glDeleteVertexArrays(1, &vao);
-
-	// lastly destroy the window and terminate glfw
-	glfwDestroyWindow(window);
-	glfwTerminate();
-}
-
-//_______________________________________________________MAIN________________________________________________________//
-
-int main(void) {	
-	LASreadOpener las_read_opener;
-    las_read_opener.set_file_name("old/MLN1-1100_2_MLSPCD_20230119_fc48_sweep_272.laz");
-    // las_read_opener.set_file_name("/media/jack/Cordel_JJ/Nextcore Customer Support/NSD-419/Exports/Apr-03 000844_deci.laz");
-    LASreader *las_reader = las_read_opener.open();
-
-    if (!las_reader)
-    {
-        std::cerr << "Error opening LAS file" << std::endl;
-        return 1;
-    }
-    std::cout << las_reader->npoints << std::endl;
-	// create a window with the specified width, height and title and initialize OpenGL 
-	GLFWwindow* window = initialize(640, 480, "OpenGL Starter Project");
-	GLuint shaderProgram = createShaderProgram(
-		ASSETS_PATH"/shaders/test.vert.glsl", 
-		ASSETS_PATH"/shaders/test.frag.glsl");
-	GLuint vao = createBuffers();
-
-	// loop until the user presses ESC or the window is closed programatically
-    while (!glfwWindowShouldClose(window)) {
-		// clear the back buffer with the specified color and the depth buffer with 1
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
-		// render to back buffer
-		render(shaderProgram, vao);
-
-		// switch front and back buffers
 		glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
+		glfwPollEvents();
+	}
 
-	// clean up all created objects
-	cleanup(window, shaderProgram, vao);
+	glfwTerminate();
+	return 0;
+}
 
-	// program exits properly
-    exit(EXIT_SUCCESS);
+// glfw: whenever the window size changed (by OS or user resize) this callback function executes
+// ---------------------------------------------------------------------------------------------
+void framebuffer_size_callback(GLFWwindow *window, int width, int height)
+{
+	// make sure the viewport matches the new window dimensions; note that width and
+	// height will be significantly larger than specified on retina displays.
+	glViewport(0, 0, width, height);
+}
+
+// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
+// ---------------------------------------------------------------------------------------------------------
+void processInput(GLFWwindow *window)
+{
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+		glfwSetWindowShouldClose(window, true);
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		camera.ProcessKeyboard(FORWARD, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+		camera.ProcessKeyboard(BACKWARD, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+		camera.ProcessKeyboard(LEFT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+		camera.ProcessKeyboard(RIGHT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+		camera.ProcessKeyboard(DOWN, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+		camera.ProcessKeyboard(UP, deltaTime);
+}
+
+// glfw: whenever the mouse moves, this callback is called
+// -------------------------------------------------------
+void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
+{
+	float xpos = static_cast<float>(xposIn);
+	float ypos = static_cast<float>(yposIn);
+
+	if (firstMouse)
+	{
+		lastX = xpos;
+		lastY = ypos;
+		firstMouse = false;
+	}
+
+	float xoffset = xpos - lastX;
+	float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+
+	lastX = xpos;
+	lastY = ypos;
+
+	camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+// glfw: whenever the mouse scroll wheel scrolls, this callback is called
+// ----------------------------------------------------------------------
+void scroll_callback(GLFWwindow *window, float xoffset, float yoffset)
+{
+	camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }

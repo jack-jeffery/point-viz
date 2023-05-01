@@ -53,7 +53,7 @@ CPMAddPackage(
     GITHUB_REPOSITORY LAStools/LAStools
     VERSION 2.0.2
 )
-# Fix a bug in LASlib wherein these directories can't be found if not being built directly
+# Fix a bug in LASlib wherein these directories can't be found if not being built directly by CMake
 target_include_directories(LASlib PRIVATE ${LAStools_SOURCE_DIR}/LASzip/src ${LAStools_SOURCE_DIR}/LASlib/inc)
 
 # Exclude all the targets from the main CMakeLists.txt that is within LAStools, leaving only LASlib
