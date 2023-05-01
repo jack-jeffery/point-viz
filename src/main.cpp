@@ -14,7 +14,7 @@
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-void processInput(GLFWwindow *window);
+void processInput(GLFWwindow *window, Shader *shader);
 
 // settings
 const unsigned int SCR_WIDTH = 1800;
@@ -28,6 +28,7 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f; // time between current frame and last frame
 float lastFrame = 0.0f;
+GLfloat pointSize = 1.0f;
 Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 
 int main()
@@ -94,8 +95,8 @@ int main()
 	camera.Position = glm::vec3(points[0], points[1], points[2]);
 	glUnmapBuffer(GL_ARRAY_BUFFER);
 	uint64_t point_count = 100;
-	// glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 	Shader ourShader(ASSETS_PATH "/shaders/point_shader.vs", ASSETS_PATH "/shaders/point_shader.fs"); // you can name your shader files however you like
+	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 	while (!glfwWindowShouldClose(window))
 	{
 		// per-frame time logic
@@ -106,11 +107,11 @@ int main()
 
 		// input
 		// -----
-		processInput(window);
+		processInput(window, &ourShader);
 
 		// render
 		// ------
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		// activate shader
 		ourShader.use();
@@ -122,7 +123,6 @@ int main()
 
 		// pass projection matrix to shader (note that in this case it could change every frame)
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.00001f, 10000000.0f);
-		glm::mat4x4 world_transform = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 		int projLoc = glGetUniformLocation(ourShader.ID, "projection");
 		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
@@ -153,7 +153,7 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void processInput(GLFWwindow *window, Shader *shader)
 {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, true);
@@ -170,6 +170,17 @@ void processInput(GLFWwindow *window)
 		camera.ProcessKeyboard(DOWN, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
 		camera.ProcessKeyboard(UP, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
+		int projLoc = glGetUniformLocation(shader->ID, "pointSize");
+		pointSize -= 0.1f;
+		glUniform1f(projLoc, pointSize);
+	}
+	if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+		int projLoc = glGetUniformLocation(shader->ID, "pointSize");
+		pointSize += 0.1f;
+		std::cout << pointSize << std::endl;
+		glUniform1f(projLoc, pointSize);
+	}
 }
 
 // glfw: whenever the mouse moves, this callback is called
